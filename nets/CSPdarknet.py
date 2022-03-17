@@ -155,17 +155,19 @@ class CSPDarkNet(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-
+    # out2为本文新加输出
     def forward(self, x):
         x = self.conv1(x)
 
         x = self.stages[0](x)
         x = self.stages[1](x)
+        out2= x
         out3 = self.stages[2](x)
         out4 = self.stages[3](out3)
         out5 = self.stages[4](out4)
 
-        return out3, out4, out5
+        # return out5, out4, out5
+        return out3, out4, out5 ,out2
 
 def darknet53(pretrained, **kwargs):
     model = CSPDarkNet([1, 2, 8, 8, 4])

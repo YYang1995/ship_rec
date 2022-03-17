@@ -1,7 +1,9 @@
 from collections import OrderedDict
+from turtle import width
 
 import torch
 import torch.nn as nn
+from .asff import ASFF
 
 from nets.CSPdarknet import darknet53
 
@@ -44,6 +46,21 @@ class Upsample(nn.Module):
 
     def forward(self, x,):
         x = self.upsample(x)
+        return x
+
+#---------------------------------------------------#
+#   下采样
+#---------------------------------------------------#
+class Downsample(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(Downsample, self).__init__()
+
+        self.downsample = nn.Sequential(
+            nn.MaxPool2d(2,2,0)
+        )
+
+    def forward(self, x,):
+        x = self.downsample(x)
         return x
 
 #---------------------------------------------------#
@@ -92,12 +109,16 @@ class YoloBody(nn.Module):
         #   52,52,256
         #   26,26,512
         #   13,13,1024
+        #   104,104,128
         #---------------------------------------------------#
         self.backbone = darknet53(None)
 
         self.conv1      = make_three_conv([512,1024],1024)
         self.SPP        = SpatialPyramidPooling()
         self.conv2      = make_three_conv([512,1024],2048)
+
+        self.down_sample1_for_P2=Downsample(128,128)
+        self.make_five_conv0=make_five_conv([128,256],256)
 
         self.upsample1          = Upsample(512,256)
         self.conv_for_P4        = conv2d(512,256,1)
@@ -122,10 +143,15 @@ class YoloBody(nn.Module):
         # 3*(5+num_classes)=3*(5+20)=3*(4+1+20)=75
         self.yolo_head1         = yolo_head([1024, len(anchors_mask[2]) * (5 + num_classes)],512)
 
+        # self.asff_0=ASFF(level=0, multiplier = 0.5)
+        # self.asff_1=ASFF(level=1, multiplier = 0.5)
+        # self.asff_2=ASFF(level=2, multiplier = 0.5)
 
     def forward(self, x):
         #  backbone
-        x2, x1, x0 = self.backbone(x)
+        x2, x1, x0 ,temp= self.backbone(x)   # temp为DownSample输出,104x104x128
+        # x2, x1, x0= self.backbone(x)   # temp为DownSample输出,104x104x128
+
 
         # 13,13,1024 -> 13,13,512 -> 13,13,1024 -> 13,13,512 -> 13,13,2048 
         P5 = self.conv1(x0)
@@ -133,10 +159,15 @@ class YoloBody(nn.Module):
         # 13,13,2048 -> 13,13,512 -> 13,13,1024 -> 13,13,512
         P5 = self.conv2(P5)
 
+        #extra module
+        P2=self.down_sample1_for_P2(temp)
+
+
         # 13,13,512 -> 13,13,256 -> 26,26,256
         P5_upsample = self.upsample1(P5)
         # 26,26,512 -> 26,26,256
         P4 = self.conv_for_P4(x1)
+        init_P4=P4
         # 26,26,256 + 26,26,256 -> 26,26,512
         P4 = torch.cat([P4,P5_upsample],axis=1)
         # 26,26,512 -> 26,26,256 -> 26,26,512 -> 26,26,256 -> 26,26,512 -> 26,26,256
@@ -146,6 +177,11 @@ class YoloBody(nn.Module):
         P4_upsample = self.upsample2(P4)
         # 52,52,256 -> 52,52,128
         P3 = self.conv_for_P3(x2)
+
+        #fuse P3 and P2
+        P3=torch.cat([P2,P3],axis=1)
+        P3=self.make_five_conv0(P3)
+
         # 52,52,128 + 52,52,128 -> 52,52,256
         P3 = torch.cat([P3,P4_upsample],axis=1)
         # 52,52,256 -> 52,52,128 -> 52,52,256 -> 52,52,128 -> 52,52,256 -> 52,52,128
@@ -157,6 +193,8 @@ class YoloBody(nn.Module):
         P4 = torch.cat([P3_downsample,P4],axis=1)
         # 26,26,512 -> 26,26,256 -> 26,26,512 -> 26,26,256 -> 26,26,512 -> 26,26,256
         P4 = self.make_five_conv3(P4)
+        P4=torch.add(P4,init_P4) #横向融合 step1    
+
 
         # 26,26,256 -> 13,13,512
         P4_downsample = self.down_sample2(P4)
@@ -165,20 +203,28 @@ class YoloBody(nn.Module):
         # 13,13,1024 -> 13,13,512 -> 13,13,1024 -> 13,13,512 -> 13,13,1024 -> 13,13,512
         P5 = self.make_five_conv4(P5)
 
+
+        # outputs=(P5,P4,P3)
+        # pan_out0=self.asff_0(outputs)
+        # pan_out1=self.asff_1(outputs)
+        # pan_out2=self.asff_2(outputs)
         #---------------------------------------------------#
         #   第三个特征层
         #   y3=(batch_size,75,52,52)
         #---------------------------------------------------#
+        # out2=self.yolo_head3(pan_out0)
         out2 = self.yolo_head3(P3)
         #---------------------------------------------------#
         #   第二个特征层
         #   y2=(batch_size,75,26,26)
         #---------------------------------------------------#
+        # out1=self.yolo_head3(pan_out1)
         out1 = self.yolo_head2(P4)
-        #---------------------------------------------------#
+        # ---------------------------------------------------#
         #   第一个特征层
         #   y1=(batch_size,75,13,13)
         #---------------------------------------------------#
+        # out0=self.yolo_head3(pan_out2)
         out0 = self.yolo_head1(P5)
 
         return out0, out1, out2

@@ -15,6 +15,7 @@ from utils.utils_bbox import DecodeBox
 '''
 训练自己的数据集必看注释！
 '''
+
 class YOLO(object):
     _defaults = {
         #--------------------------------------------------------------------------#
@@ -25,8 +26,8 @@ class YOLO(object):
         #   验证集损失较低不代表mAP较高，仅代表该权值在验证集上泛化性能较好。
         #   如果出现shape不匹配，同时要注意训练时的model_path和classes_path参数的修改
         #--------------------------------------------------------------------------#
-        "model_path"        : 'model_data/yolo4_weights.pth',
-        "classes_path"      : 'model_data/coco_classes.txt',
+        "model_path"        : 'logs/ep074-loss0.476-val_loss0.821.pth',
+        "classes_path"      : 'model_data/ship_classes.txt',
         #---------------------------------------------------------------------#
         #   anchors_path代表先验框对应的txt文件，一般不修改。
         #   anchors_mask用于帮助代码找到对应的先验框，一般不修改。

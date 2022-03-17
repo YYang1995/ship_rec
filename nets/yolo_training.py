@@ -30,6 +30,15 @@ class YOLOLoss(nn.Module):
     def MSELoss(self, pred, target):
         return torch.pow(pred - target, 2)
 
+    def FocalLoss(self,pred,target):
+        self.alpha=0.75
+        self.gamma=2
+        epsilon = 1e-7
+        pred    = self.clip_by_tensor(pred, epsilon, 1.0 - epsilon)
+        loss_obj=self.alpha*target*torch.pow((1.0-pred),self.gamma)*(torch.log(pred))+\
+            (1-self.alpha)*(1.0-target)*torch.pow(target,self.gamma)*(torch.log(1.0-pred))
+        return -loss_obj
+
     def BCELoss(self, pred, target):
         epsilon = 1e-7
         pred    = self.clip_by_tensor(pred, epsilon, 1.0 - epsilon)
@@ -103,6 +112,8 @@ class YOLOLoss(nn.Module):
     #---------------------------------------------------#
     def smooth_labels(self, y_true, label_smoothing, num_classes):
         return y_true * (1.0 - label_smoothing) + label_smoothing / num_classes
+
+
 
     def forward(self, l, input, targets=None):
         #----------------------------------------------------#
@@ -195,8 +206,11 @@ class YOLOLoss(nn.Module):
         #-----------------------------------------------------------#
         loss_conf   = torch.sum(self.BCELoss(conf, y_true[..., 4]) * y_true[..., 4]) + \
                       torch.sum(self.BCELoss(conf, y_true[..., 4]) * noobj_mask)
+        # loss_conf   = torch.sum(self.FocalLoss(conf, y_true[..., 4]) * y_true[..., 4]) + \
+                    #   torch.sum(self.FocalLoss(conf, y_true[..., 4]) * noobj_mask)
 
         loss_cls    = torch.sum(self.BCELoss(pred_cls[y_true[..., 4] == 1], self.smooth_labels(y_true[..., 5:][y_true[..., 4] == 1], self.label_smoothing, self.num_classes)))
+        # loss_cls    = torch.sum(self.FocalLoss(pred_cls[y_true[..., 4] == 1], self.smooth_labels(y_true[..., 5:][y_true[..., 4] == 1], self.label_smoothing, self.num_classes)))
 
         loss        = loss_loc + loss_conf + loss_cls
         num_pos = torch.sum(y_true[..., 4])

@@ -1,3 +1,4 @@
+
 import os
 import xml.etree.ElementTree as ET
 
@@ -29,7 +30,7 @@ if __name__ == "__main__":
     #   此处的classes_path用于指定需要测量VOC_map的类别
     #   一般情况下与训练和预测所用的classes_path一致即可
     #-------------------------------------------------------#
-    classes_path    = 'model_data/voc_classes.txt'
+    classes_path    = 'model_data/ship_classes.txt'
     #-------------------------------------------------------#
     #   MINOVERLAP用于指定想要获得的mAP0.x
     #   比如计算mAP0.75，可以设定MINOVERLAP = 0.75。
@@ -38,7 +39,7 @@ if __name__ == "__main__":
     #-------------------------------------------------------#
     #   map_vis用于指定是否开启VOC_map计算的可视化
     #-------------------------------------------------------#
-    map_vis         = False
+    map_vis         =    False
     #-------------------------------------------------------#
     #   指向VOC数据集所在的文件夹
     #   默认指向根目录下的VOC数据集
