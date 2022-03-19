@@ -112,7 +112,7 @@ if __name__ == "__main__":
         cv2.destroyAllWindows()
 
     elif mode == "fps":
-        img = Image.open('img/115.jpg')
+        img = Image.open('img/002074.jpg')
         tact_time = yolo.get_FPS(img, test_interval)
         print(str(tact_time) + ' seconds, ' + str(1/tact_time) + 'FPS, @batch_size 1')
 

@@ -1,9 +1,11 @@
 from collections import OrderedDict
 from turtle import width
+from matplotlib.pyplot import axis
 
 import torch
 import torch.nn as nn
 from .asff import ASFF
+from .rfb  import BasicRFB as RFB
 
 from nets.CSPdarknet import darknet53
 
@@ -117,8 +119,18 @@ class YoloBody(nn.Module):
         self.SPP        = SpatialPyramidPooling()
         self.conv2      = make_three_conv([512,1024],2048)
 
-        self.down_sample1_for_P2=Downsample(128,128)
-        self.make_five_conv0=make_five_conv([128,256],256)
+        # for P2 fusion
+        # self.down_sample1_for_P2=Downsample(128,128)
+        # self.make_five_conv0=make_five_conv([128,256],256)
+
+        # rfb
+        self.rfb=RFB(in_planes=128,out_planes=64)
+        # self.make_five_conv_for_p2_up=make_five_conv([128,256],256)
+        self.upsample_for_p2=Upsample(128,64)
+        # concat
+        self.make_five_conv_for_p2_down=make_five_conv([64,128],128)
+        self.down_sample_for_p2=conv2d(64,128,3,stride=2)
+        self.make_five_conv_for_P3=make_five_conv([128,256],256)
 
         self.upsample1          = Upsample(512,256)
         self.conv_for_P4        = conv2d(512,256,1)
@@ -150,7 +162,7 @@ class YoloBody(nn.Module):
     def forward(self, x):
         #  backbone
         x2, x1, x0 ,temp= self.backbone(x)   # temp为DownSample输出,104x104x128
-        # x2, x1, x0= self.backbone(x)   # temp为DownSample输出,104x104x128
+        # x2, x1, x0= self.backbone(x)    
 
 
         # 13,13,1024 -> 13,13,512 -> 13,13,1024 -> 13,13,512 -> 13,13,2048 
@@ -160,14 +172,15 @@ class YoloBody(nn.Module):
         P5 = self.conv2(P5)
 
         #extra module
-        P2=self.down_sample1_for_P2(temp)
+        # P2=self.down_sample1_for_P2(temp)
+        
 
 
         # 13,13,512 -> 13,13,256 -> 26,26,256
         P5_upsample = self.upsample1(P5)
         # 26,26,512 -> 26,26,256
         P4 = self.conv_for_P4(x1)
-        init_P4=P4
+        init_P4=P4 # for横向连接
         # 26,26,256 + 26,26,256 -> 26,26,512
         P4 = torch.cat([P4,P5_upsample],axis=1)
         # 26,26,512 -> 26,26,256 -> 26,26,512 -> 26,26,256 -> 26,26,512 -> 26,26,256
@@ -179,13 +192,25 @@ class YoloBody(nn.Module):
         P3 = self.conv_for_P3(x2)
 
         #fuse P3 and P2
-        P3=torch.cat([P2,P3],axis=1)
-        P3=self.make_five_conv0(P3)
+        # P3=torch.cat([P2,P3],axis=1)
+        # P3=self.make_five_conv0(P3)
+
 
         # 52,52,128 + 52,52,128 -> 52,52,256
         P3 = torch.cat([P3,P4_upsample],axis=1)
         # 52,52,256 -> 52,52,128 -> 52,52,256 -> 52,52,128 -> 52,52,256 -> 52,52,128
         P3 = self.make_five_conv2(P3)
+
+        
+        #extra for RFB
+        P2=self.rfb(temp)   #104x104x128->104x104x64
+        P3_upsample=self.upsample_for_p2(P3)  #52x52x128->104x104x64
+        P2=torch.cat([P2,P3_upsample],axis=1)  #104x104x128
+
+        P2=self.make_five_conv_for_p2_down(P2)  #104x104x128 ->104x104x64
+        P2=self.down_sample_for_p2(P2)    #104x104x64->52x52x128
+        P3=torch.cat([P3,P2],axis=1)   # 52x52x256
+        P3=self.make_five_conv_for_P3(P3)  #52x52x128
 
         # 52,52,128 -> 26,26,256
         P3_downsample = self.down_sample1(P3)
@@ -193,7 +218,7 @@ class YoloBody(nn.Module):
         P4 = torch.cat([P3_downsample,P4],axis=1)
         # 26,26,512 -> 26,26,256 -> 26,26,512 -> 26,26,256 -> 26,26,512 -> 26,26,256
         P4 = self.make_five_conv3(P4)
-        P4=torch.add(P4,init_P4) #横向融合 step1    
+        # P4=torch.add(P4,init_P4) #横向融合 step1    
 
 
         # 26,26,256 -> 13,13,512
