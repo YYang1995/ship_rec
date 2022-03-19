@@ -124,13 +124,18 @@ class YoloBody(nn.Module):
         # self.make_five_conv0=make_five_conv([128,256],256)
 
         # rfb
-        self.rfb=RFB(in_planes=128,out_planes=64)
+        # self.rfb=RFB(in_planes=128,out_planes=64)
         # self.make_five_conv_for_p2_up=make_five_conv([128,256],256)
         self.upsample_for_p2=Upsample(128,64)
+        self.conv1_for_p2=make_three_conv([64,128],128)
+        self.conv2_for_p2=make_three_conv([64,256],256)
         # concat
         self.make_five_conv_for_p2_down=make_five_conv([64,128],128)
         self.down_sample_for_p2=conv2d(64,128,3,stride=2)
         self.make_five_conv_for_P3=make_five_conv([128,256],256)
+
+
+        
 
         self.upsample1          = Upsample(512,256)
         self.conv_for_P4        = conv2d(512,256,1)
@@ -180,7 +185,6 @@ class YoloBody(nn.Module):
         P5_upsample = self.upsample1(P5)
         # 26,26,512 -> 26,26,256
         P4 = self.conv_for_P4(x1)
-        init_P4=P4 # for横向连接
         # 26,26,256 + 26,26,256 -> 26,26,512
         P4 = torch.cat([P4,P5_upsample],axis=1)
         # 26,26,512 -> 26,26,256 -> 26,26,512 -> 26,26,256 -> 26,26,512 -> 26,26,256
@@ -203,7 +207,11 @@ class YoloBody(nn.Module):
 
         
         #extra for RFB
-        P2=self.rfb(temp)   #104x104x128->104x104x64
+        # P2=self.rfb(temp)   #104x104x128->104x104x64
+        P2=self.conv1_for_p2(temp)  #104x104x128 -> 104x104x64
+        P2=self.SPP(P2)  #104x104x64 ->104x104x256
+        P2=self.conv2_for_p2(P2) # 104x104x256 ->104x104x64
+
         P3_upsample=self.upsample_for_p2(P3)  #52x52x128->104x104x64
         P2=torch.cat([P2,P3_upsample],axis=1)  #104x104x128
 
